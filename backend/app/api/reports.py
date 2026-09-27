@@ -8,14 +8,12 @@ from app.models.models import Arrival, BunchReport, Line, Trip
 from app.services.bunch_engine import detect_bunching, events_to_dicts
 router = APIRouter(prefix="/reports", tags=["reports"])
 
-@router.get("")
-def list_reports(db: Session = Depends(get_db)):
-    rows = db.scalars(select(BunchReport).order_by(BunchReport.id.desc())).all()
-    return [{"id": r.id, "line_id": r.line_id, "stop_name": r.stop_name,
-             "created_at": r.created_at.isoformat(), "events": json.loads(r.summary_json)} for r in rows]
+def compute_line_events(db: Session, line_id: int, stop_name: str | None) -> tuple[Line, list[dict]]:
+    """按当前班次与到站即时算出间隔事件。
 
-@router.post("/run")
-def run_detection(line_id: int, stop_name: str | None = None, db: Session = Depends(get_db)):
+    分类只走 bunch_engine.classify_gap（现网边界规则：间隔恰好等于阈值判正常），
+    run / current / suggestions 共用此入口，避免各处各算各的。
+    """
     line = db.get(Line, line_id)
     if not line: raise HTTPException(404, "线路不存在")
     trips = db.scalars(select(Trip).where(Trip.line_id == line_id)).all()
@@ -25,16 +23,32 @@ def run_detection(line_id: int, stop_name: str | None = None, db: Session = Depe
     payload = [{"stop_name": a.stop_name, "trip_no": trip_no_map[a.trip_id], "actual_arrive": a.actual_arrive}
                for a in arrivals if stop_name is None or a.stop_name == stop_name]
     events = detect_bunching(payload, line.planned_headway_min, line.bunch_threshold, line.large_threshold)
-    data = events_to_dicts(events)
-    report = BunchReport(line_id=line_id, stop_name=stop_name or "*", created_at=datetime.utcnow(),
+    return line, events_to_dicts(events)
+
+@router.get("")
+def list_reports(db: Session = Depends(get_db)):
+    rows = db.scalars(select(BunchReport).order_by(BunchReport.id.desc())).all()
+    return [{"id": r.id, "line_id": r.line_id, "stop_name": r.stop_name,
+             "created_at": r.created_at.isoformat(), "events": json.loads(r.summary_json)} for r in rows]
+
+@router.get("/current")
+def current_events(line_id: int, stop_name: str | None = None, db: Session = Depends(get_db)):
+    """当前栏数据源：即时计算，不落库，不产生历史报告。"""
+    line, data = compute_line_events(db, line_id, stop_name)
+    return {"line_id": line.id, "stop_name": stop_name or "*", "events": data}
+
+@router.post("/run")
+def run_detection(line_id: int, stop_name: str | None = None, db: Session = Depends(get_db)):
+    line, data = compute_line_events(db, line_id, stop_name)
+    report = BunchReport(line_id=line.id, stop_name=stop_name or "*", created_at=datetime.utcnow(),
                          summary_json=json.dumps(data, ensure_ascii=False))
     db.add(report); db.commit(); db.refresh(report)
     return {"id": report.id, "events": data}
 
 @router.get("/suggestions")
 def suggestions(line_id: int, db: Session = Depends(get_db)):
-    result = run_detection(line_id=line_id, stop_name=None, db=db)
-    return {"line_id": line_id, "suggestions": [e for e in result["events"] if e["status"] != "normal"]}
+    _, data = compute_line_events(db, line_id, None)
+    return {"line_id": line_id, "suggestions": [e for e in data if e["status"] != "normal"]}
 
 @router.get("/timeline")
 def timeline(line_id: int, stop_name: str = "市民中心", db: Session = Depends(get_db)):

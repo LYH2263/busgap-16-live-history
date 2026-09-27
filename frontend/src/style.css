@@ -96,6 +96,20 @@ h1 { margin: 0 0 0.25rem; font-size: 1.25rem; font-weight: 700; }
   gap: 1rem; align-items: start;
 }
 @media (max-width: 900px) { .bg-split { grid-template-columns: 1fr; } }
+.bg-split-reports { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .bg-split-reports { grid-template-columns: 1fr; } }
+.bg-empty { padding: 0.9rem; color: var(--bg-dim); font-size: 0.82rem; }
+.bg-hist-note {
+  font-size: 0.68rem; font-weight: 400; letter-spacing: 0;
+  text-transform: none; color: var(--bg-dim);
+}
+.bg-history-report { border-bottom: 1px solid rgba(30,58,79,0.7); }
+.bg-history-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;
+  padding: 0.55rem 0.9rem 0.3rem; font-size: 0.8rem;
+  background: rgba(46,196,255,0.05);
+  border-bottom: 1px solid rgba(30,58,79,0.7);
+}
 
 .bg-trip-col {
   background: var(--bg-panel);
