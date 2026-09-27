@@ -14,6 +14,8 @@ class GapEvent:
     suggestion: str
 
 def classify_gap(gap_min: float, planned_headway_min: float, bunch_threshold: float, large_threshold: float) -> tuple[str, str]:
+    # 现网边界规则：间隔恰好等于阈值时不算异常（严格小于/大于才判定）。
+    # 当前栏（/reports/live）与历史报告（/reports/run 落库）共用本函数，两边口径一致。
     if gap_min < bunch_threshold:
         return ("bunching", f"间隔 {gap_min:.1f} 分钟低于串车阈值 {bunch_threshold}，建议后车缓行或抽稀。")
     if gap_min > large_threshold:
